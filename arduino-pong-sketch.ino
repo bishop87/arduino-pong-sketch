@@ -5,6 +5,7 @@
 //Define Pins
 #define OLED_RESET -1
 #define BEEPER A3
+#define BTN_SELECT 2
 #define CONTROL_A A0
 #define CONTROL_B A1
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -23,11 +24,26 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define MIN_Y_SPEED 0.5
 #define MAX_Y_SPEED 2
 //Define Variables
+byte difficolta = 2;
+bool suono = true;
 
-int game = -1; //0: pong-1:1; 1: pong-cpu; 2: scketch
-int menuIndex = 0;
-const int menuItems = 3;
-String menu[menuItems] = {"PONG-1:1", "PONG-CPU", "SKETCH"};
+bool suspendSelect = false;
+byte menuLevelsNum=2;
+byte menuLevelIndex=0;
+byte menuSelected=-1;
+byte menuCurrentSelect=-1;
+byte menuItemsPerLevel[2] = {4,3};
+String menu[7] = {"PONG-1:1", "PONG-CPU", "SKETCH", "OPZIONI...", "SUONO", "DIFICOLTA' CPU", "INDIETRO..."};
+
+
+//int game = -1; //0: pong-1:1; 1: pong-cpu; 2: scketch
+//int menuIndex = 0;
+//const int menuItems = 4;
+//String menu[menuItems] = {"PONG-1:1", "PONG-CPU", "SKETCH", "OPZIONI..."};
+
+//int optionsIndex = 0;
+//const int optionsItems = 3;
+//String options[optionsItems] = {"DIFFICOLTA' CPU", "SUONO [ON/OFF]", "INDIETRO.."};
 
 int paddleLocationA = 0;
 int paddleLocationB = 0;
@@ -42,11 +58,14 @@ int scoreB = 0;
 
 
 void setup(){
-  //Serial.begin(115200);
+  Serial.begin(9600);
+  
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     //Serial.println(F("SSD1306 allocation failed"));
     for(;;);
   }
+  pinMode(BTN_SELECT, INPUT_PULLUP);
+  
   splash();
   display.setTextColor(WHITE);
   display.setTextSize(FONT_SIZE);
@@ -55,36 +74,94 @@ void setup(){
   randomSeed(analogRead(0));
 }
 
+void loop()
+{
+  switch(menuSelected){
+    case 0: //pong1vs1
+      calculateMovement(false);
+      drawPong();
+      break;
+    case 1: //pongCPU
+      calculateMovement(true);
+      drawPong();
+      break;  
+    case 2: //sketch
+      drawSchetch();
+      break;
+    case 3: //options menu
+      menuLevelIndex=1;
+      //drawMenu();
+      showMenu();
+      break;
+    case 6: //indietro
+      menuLevelIndex=0;
+      //drawMenu();
+      showMenu();
+      break;  
+    default: 
+      menuLevelIndex=0;
+      //drawMenu();
+      showMenu();
+  }
+}
+
 void showMenu(){
 
-  int controlB = analogRead(CONTROL_B);  
-  while (abs(controlB - analogRead(CONTROL_B)) < 10) { //controlB attiva la selezione corrente
-    
-    int controlA = analogRead(CONTROL_A); 
+  //int controlB = analogRead(CONTROL_B);  
+  //while (abs(controlB - analogRead(CONTROL_B)) < 10) { //controlB attiva la selezione corrente
+  //while (digitalRead(BTN_SELECT)==HIGH) { //controlB attiva la selezione corrente
+  int controlA = analogRead(CONTROL_A); 
 
-    int menuSelect = map(controlA, 100, 900, 0, menuItems - 1);
-    
-    if(menuSelect != menuIndex) {
-      menuIndex = menuSelect;
-      drawMenu();
-    }  
-  }  
+  int menuSelect = map(controlA, 100, 900, 0, menuItemsPerLevel[menuLevelIndex] - 1);
+  //Serial.print("menuSelect: ");
+  //Serial.println(menuSelect);
+  byte menuOffset=0;
+  for(byte i=0; i < menuLevelIndex; i++){
+    menuOffset += menuItemsPerLevel[i];
+  }
 
-  game=menuIndex;
+  if(menuSelect != menuCurrentSelect) {
+    //calcolo l'offset di menu corrente
+    
+    menuCurrentSelect = menuSelect;
+    drawMenu(menuSelect, menuOffset);
+  }
+
+  //game=menuIndex;
   display.clearDisplay();
-  
+  if(digitalRead(BTN_SELECT)==LOW && !suspendSelect){
+    suspendSelect=true; //evito che la pressione del tasto duri anche nel sotto menu
+    menuSelected=menuSelect + menuOffset;
+    Serial.print("menuSelected: ");
+    Serial.println(menuSelected+menuOffset);
+    delay(100);
+  }
+  if(digitalRead(BTN_SELECT)==HIGH && suspendSelect){
+    suspendSelect=false;
+    Serial.print("suspendSelect: ");
+    Serial.println(suspendSelect);
+    delay(100);
+  }
   //Serial.print("game: ");
   //Serial.println(game);
 }
 
-void drawMenu() {
+void drawMenu(byte currentItemIndex, byte menuOffset) {
   display.clearDisplay();
-  display.setTextSize(2);
+  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0,0);
-  
-  for(int i = 0; i < menuItems; i++) {
-    if(i == menuIndex) {
+
+  Serial.print("from x: ");
+  Serial.print(menuOffset);
+  Serial.print(" to: ");
+  Serial.print(menuOffset + menuItemsPerLevel[menuLevelIndex]);
+  Serial.print(" currentItemIndex: ");
+  Serial.println(currentItemIndex);
+
+  for(byte i=menuOffset; i < menuOffset + menuItemsPerLevel[menuLevelIndex]; i++) {
+
+    if(i == currentItemIndex + menuOffset) {
       display.print("> "); // Indica la selezione corrente
     } else {
       display.print("  ");
@@ -94,11 +171,54 @@ void drawMenu() {
   
   display.fillRect(0,SCREEN_HEIGHT-10,SCREEN_WIDTH,10,WHITE);
   display.setTextColor(BLACK);
-  centerPrint("A:naviga B:seleziona",SCREEN_HEIGHT-9,1);
+  centerPrint(F("seleziona il menu"),SCREEN_HEIGHT-9,1);
   
   display.display();
 }
+/*
+void showOptions(){
 
+  int controlB = analogRead(CONTROL_B);  
+  //while (abs(controlB - analogRead(CONTROL_B)) < 10) { //controlB attiva la selezione corrente
+  while (digitalRead(BTN_SELECT)==HIGH) { //controlB attiva la selezione corrente
+    int controlA = analogRead(CONTROL_A); 
+    int optionSelect = map(controlA, 100, 900, 0, optionsItems - 1);
+    
+    if(optionSelect != optionsIndex) {
+      optionsIndex = optionSelect;
+      drawOptions();
+    }  
+  }  
+
+  game=-1;  //back
+  display.clearDisplay();
+
+}
+
+void drawOptions() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  
+  for(int i = 0; i < optionsItems; i++) {
+    if(i == optionsIndex) {
+      display.print("> "); // Indica la selezione corrente
+    } else {
+      display.print("  ");
+    }
+    display.println(options[i]);
+  }
+  
+  display.fillRect(0,SCREEN_HEIGHT-10,SCREEN_WIDTH,10,WHITE);
+  display.setTextColor(BLACK);
+  centerPrint("seleziona l'opzione",SCREEN_HEIGHT-9,1);
+  
+  display.display();
+}
+*/
+
+/*
 void splash()
 {
   display.clearDisplay();
@@ -114,25 +234,21 @@ void splash()
   delay(2000);
   soundStart();
 }
+*/
 
-void loop()
-{
-  switch(game){
-    case 0: //pong1vs1
-      calculateMovement(false);
-      drawPong();
-      break;
-    case 1: //pongCPU
-      calculateMovement(true);
-      drawPong();
-      break;  
-    case 2: //sketch
-      drawSchetch();
-      break;
-    default: 
-      drawMenu();
-      showMenu(); //menu
-  }
+void splash() {
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  centerPrint(F("PONG"), 0, 2);
+  centerPrint(F("+"), 16, 1);
+  centerPrint(F("SKETCH"), 25, 2);
+  centerPrint(F("By Bishop87"), 44, 1);
+  display.fillRect(0, SCREEN_HEIGHT-10, SCREEN_WIDTH, 10, WHITE);
+  display.setTextColor(BLACK);
+  centerPrint(F("Attendi il menu..."), SCREEN_HEIGHT-9, 1);
+  display.display();
+  delay(2000);
+  soundStart();
 }
 
 //input vsCPU: se true abilita calcolo movimento paddle A
@@ -264,9 +380,19 @@ void soundBounce(){
 void soundPoint(){
   tone(BEEPER, 150, 150);
 }
+/*
 void centerPrint(char *text, int y, int size){
   display.setTextSize(size);
   display.setCursor(SCREEN_WIDTH/2 - ((strlen(text))*6*size)/2,y);
+  display.print(text);
+}
+*/
+void centerPrint(const __FlashStringHelper *text, int y, int size) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  display.setTextSize(size);
+  display.setCursor(SCREEN_WIDTH/2 - (w*size)/2, y);
   display.print(text);
 }
 
